@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MACD Histogram - Dark Theme</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            min-height: 100vh;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: rgba(26, 26, 26, 0.8);
+            border-radius: 20px;
+            padding: 30px;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .chart-container {
+            position: relative;
+            height: 500px;
+            margin: 20px 0;
+            background: rgba(45, 45, 45, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        h1 {
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(45deg, #5fe499, #00d4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 0 30px rgba(95, 228, 153, 0.3);
+        }
+
+        .info-box {
+            background: linear-gradient(135deg, rgba(95, 228, 153, 0.1), rgba(0, 212, 255, 0.1));
+            border: 1px solid rgba(95, 228, 153, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 20px;
+            text-align: center;
+            font-size: 14px;
+            color: #ffffff;
+        }
+
+        .controls {
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: linear-gradient(45deg, #5fe499, #00d4ff);
+            border: none;
+            padding: 10px 20px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(95, 228, 153, 0.3);
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(95, 228, 153, 0.4);
+        }
+
+        button.active {
+            background: linear-gradient(45deg, #00d4ff, #5fe499);
+            transform: scale(1.05);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📊 MACD Histogram (Bars)</h1>
+
+        <div class="controls">
+            <button onclick="generateData(21)" class="active" id="btn21">21 Days</button>
+            <button onclick="generateData(30)" id="btn30">30 Days</button>
+            <button onclick="generateData(60)" id="btn60">60 Days</button>
+        </div>
+
+        <div class="chart-container">
+            <canvas id="macdChart"></canvas>
+        </div>
+
+        <div class="info-box">
+            📈 القيم الموجبة (خضراء) تشير لزخم صاعد، والقيم السالبة (حمراء) تشير لزخم هابط
+        </div>
+    </div>
+
+    <script>
+        let chart;
+
+        // Generate sample MACD histogram data
+        function generateMACDData(days) {
+            const data = [];
+            const labels = [];
+            const today = new Date();
+
+            for (let i = days - 1; i >= 0; i--) {
+                const date = new Date(today);
+                date.setDate(date.getDate() - i);
+
+                // Generate realistic MACD histogram values
+                const trend = Math.sin((i / days) * Math.PI * 2) * 0.8;
+                const noise = (Math.random() - 0.5) * 0.6;
+                const value = trend + noise;
+
+                data.push(Number(value.toFixed(3)));
+                labels.push(date.toLocaleDateString('en-GB', {
+                    day: '2-digit',
+                    month: '2-digit'
+                }));
+            }
+
+            return { data, labels };
+        }
+
+        function createChart(days = 21) {
+            const { data, labels } = generateMACDData(days);
+
+            // Show every 2-3 days for x-axis labels
+            const displayLabels = labels.map((label, index) => {
+                return index % 3 === 0 ? label : '';
+            });
+
+            const ctx = document.getElementById('macdChart').getContext('2d');
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: displayLabels,
+                    datasets: [{
+                        label: 'MACD Histogram',
+                        data: data,
+                        backgroundColor: data.map(value =>
+                            value > 0 ? 'rgba(95, 228, 153, 0.8)' : 'rgba(243, 77, 99, 0.8)'
+                        ),
+                        borderColor: data.map(value =>
+                            value > 0 ? '#5fe499' : '#f34d63'
+                        ),
+                        borderWidth: 1,
+                        borderRadius: 2,
+                        barThickness: 'flex',
+                        maxBarThickness: 15
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            backgroundColor: 'rgba(26, 26, 26, 0.9)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#ffffff',
+                            borderColor: 'rgba(255, 255, 255, 0.1)',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            callbacks: {
+                                title: function(context) {
+                                    const index = context[0].dataIndex;
+                                    return labels[index];
+                                },
+                                label: function(context) {
+                                    return `MACD: ${context.raw}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: true,
+                                color: 'rgba(255, 255, 255, 0.1)',
+                                lineWidth: 0.5
+                            },
+                            ticks: {
+                                color: '#ffffff',
+                                font: {
+                                    size: 11
+                                },
+                                maxRotation: 45,
+                                minRotation: 0
+                            },
+                            border: {
+                                color: 'rgba(255, 255, 255, 0.2)'
+                            }
+                        },
+                        y: {
+                            grid: {
+                                display: true,
+                                color: 'rgba(255, 255, 255, 0.1)',
+                                lineWidth: 0.5
+                            },
+                            ticks: {
+                                color: '#ffffff',
+                                font: {
+                                    size: 11
+                                },
+                                callback: function(value) {
+                                    return value.toFixed(1);
+                                }
+                            },
+                            border: {
+                                color: 'rgba(255, 255, 255, 0.2)'
+                            },
+                            beginAtZero: true
+                        }
+                    },
+                    layout: {
+                        padding: {
+                            top: 20,
+                            right: 20,
+                            bottom: 20,
+                            left: 20
+                        }
+                    },
+                    animation: {
+                        duration: 1500,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+
+            // Add zero line
+            const zeroLinePlugin = {
+                id: 'zeroLine',
+                afterDraw: function(chart) {
+                    const ctx = chart.ctx;
+                    const chartArea = chart.chartArea;
+                    const yScale = chart.scales.y;
+
+                    const zeroY = yScale.getPixelForValue(0);
+
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([]);
+                    ctx.beginPath();
+                    ctx.moveTo(chartArea.left, zeroY);
+                    ctx.lineTo(chartArea.right, zeroY);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            };
+
+            Chart.register(zeroLinePlugin);
+        }
+
+        function generateData(days) {
+            // Update active button
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById(`btn${days}`).classList.add('active');
+
+            createChart(days);
+        }
+
+        // Initialize chart on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            generateData(21);
+
+            // Add keyboard shortcuts
+            document.addEventListener('keydown', function(e) {
+                switch(e.key) {
+                    case '1':
+                        generateData(21);
+                        break;
+                    case '2':
+                        generateData(30);
+                        break;
+                    case '3':
+                        generateData(60);
+                        break;
+                }
+            });
+        });
+    </script>
+</body>
+</html>

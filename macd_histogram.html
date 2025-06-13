@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MACD Histogram - Dark Theme</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/3.9.1/chart.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0f0f0f 0%, #1a1a1a 50%, #0f0f0f 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ffffff;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .app-container {
+            display: flex;
+            height: 100vh;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: rgba(26, 26, 26, 0.95);
+            backdrop-filter: blur(15px);
+            border-right: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 2px 0 20px rgba(0, 0, 0, 0.3);
+        }
+
+        .sidebar h2 {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(45deg, #5fe499, #00d4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+
+        .section-title {
+            color: #ffffff;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 25px 0 15px 0;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.8;
+        }
+
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        button {
+            background: linear-gradient(45deg, #5fe499, #00d4ff);
+            border: none;
+            padding: 12px 20px;
+            border-radius: 25px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(95, 228, 153, 0.3);
+            width: 100%;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(95, 228, 153, 0.4);
+        }
+
+        button.active {
+            background: linear-gradient(45deg, #00d4ff, #5fe499);
+            transform: scale(1.02);
+        }
+
+        .legend {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 15px;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+        }
+
+        .legend-color {
+            width: 12px;
+            height: 12px;
+            border-radius: 2px;
+        }
+
+        .legend-positive { background-color: #5fe499; }
+        .legend-negative { background-color: #f34d63; }
+
+        .info-panel {
+            background: linear-gradient(135deg, rgba(95, 228, 153, 0.1), rgba(0, 212, 255, 0.1));
+            border: 1px solid rgba(95, 228, 153, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+            margin-top: 10px;
+            font-size: 12px;
+            line-height: 1.5;
+        }
+
+        .main-content {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chart-header h1 {
+            font-size: 28px;
+            font-weight: 700;
+            background: linear-gradient(45deg, #5fe499, #00d4ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 30px rgba(95, 228, 153, 0.3);
+            margin-bottom: 20px;
+            text-align: center;
+        }
+
+        .chart-container {
+            flex: 1;
+            background: rgba(45, 45, 45, 0.8);
+            border-radius: 15px;
+            padding: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+            min-height: 0;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar { width: 250px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <div class="sidebar">
+            <h2>📊 MACD Control</h2>
+            
+            <div class="legend">
+                <div class="legend-item">
+                    <div class="legend-color legend-positive"></div>
+                    <span>Bullish</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-color legend-negative"></div>
+                    <span>Bearish</span>
+                </div>
+            </div>
+
+            <div class="section-title">Time Periods</div>
+            <div class="controls">
+                <button onclick="generateData(21)" class="active" id="btn21">21 Days</button>
+                <button onclick="generateData(30)" id="btn30">30 Days</button>
+                <button onclick="generateData(60)" id="btn60">60 Days</button>
+                <button onclick="generateData(90)" id="btn90">90 Days</button>
+            </div>
+
+            <div class="info-panel">
+                <strong>📈 MACD Histogram:</strong><br>
+                • Positive values (green) = Bullish momentum<br>
+                • Negative values (red) = Bearish momentum<br>
+                • White line = Zero reference line<br><br>
+                <strong>Shortcuts:</strong><br>
+                Press 1, 2, 3, or 4 to change periods
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="chart-header">
+                <h1>MACD Histogram Analysis</h1>
+            </div>
+            <div class="chart-container">
+                <canvas id="macdChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chart;
+
+        // >>> Streamlit رح يحقن القيم هون <<< 
+        	const macdData   = {{MACD_VALUES}};
+        const macdLabels = {{MACD_LABELS}};
+
+
+        const createChart = (days = 21) => {
+            const data   = macdData.slice(-days);
+            const labels = macdLabels.slice(-days);
+            const labelInterval = days <= 30 ? 3 : Math.ceil(days / 10);
+            const displayLabels = labels.map((label, index) => 
+                index % labelInterval === 0 ? label : ''
+            );
+
+            if (chart) chart.destroy();
+
+            const ctx = document.getElementById('macdChart').getContext('2d');
+            chart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: displayLabels,
+                    datasets: [{
+                        label: 'MACD Histogram',
+                        data: data,
+                        backgroundColor: data.map(value =>
+                            value > 0 ? 'rgba(95, 228, 153, 0.8)' : 'rgba(243, 77, 99, 0.8)'
+                        ),
+                        borderColor: data.map(value =>
+                            value > 0 ? '#5fe499' : '#f34d63'
+                        ),
+                        borderWidth: 1,
+                        borderRadius: 2,
+                        barThickness: 'flex',
+                        maxBarThickness: Math.max(8, Math.min(20, 300 / days))
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            backgroundColor: 'rgba(26, 26, 26, 0.95)',
+                            titleColor: '#ffffff',
+                            bodyColor: '#ffffff',
+                            borderColor: 'rgba(255, 255, 255, 0.2)',
+                            borderWidth: 1,
+                            cornerRadius: 8,
+                            callbacks: {
+                                title: (context) => labels[context[0].dataIndex],
+                                label: (context) => {
+                                    const value = context.raw;
+                                    const trend = value > 0 ? '📈 Bullish' : '📉 Bearish';
+                                    return [`MACD: ${value}`, trend];
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            grid: {
+                                display: true,
+                                color: 'rgba(255, 255, 255, 0.1)',
+                                lineWidth: 0.5
+                            },
+                            ticks: {
+                                color: '#ffffff',
+                                font: { size: 10 },
+                                maxRotation: 45,
+                                minRotation: 0
+                            },
+                            border: { color: 'rgba(255, 255, 255, 0.2)' }
+                        },
+                        y: {
+                            grid: {
+                                display: true,
+                                color: 'rgba(255, 255, 255, 0.1)',
+                                lineWidth: 0.5
+                            },
+                            ticks: {
+                                color: '#ffffff',
+                                font: { size: 10 },
+                                callback: (value) => value.toFixed(1)
+                            },
+                            border: { color: 'rgba(255, 255, 255, 0.2)' },
+                            beginAtZero: true
+                        }
+                    },
+                    layout: { padding: 10 },
+                    animation: {
+                        duration: 1200,
+                        easing: 'easeOutQuart'
+                    }
+                }
+            });
+
+            // Zero line plugin
+            Chart.register({
+                id: 'zeroLine',
+                afterDraw: (chart) => {
+                    const { ctx, chartArea, scales: { y } } = chart;
+                    const zeroY = y.getPixelForValue(0);
+
+                    ctx.save();
+                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.moveTo(chartArea.left, zeroY);
+                    ctx.lineTo(chartArea.right, zeroY);
+                    ctx.stroke();
+                    ctx.restore();
+                }
+            });
+        };
+
+        const generateData = (days) => {
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            const btn = document.getElementById(`btn${days}`);
+            if (btn) btn.classList.add('active');
+            createChart(days);
+        };
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            generateData(21);
+
+            // Keyboard shortcuts
+            document.addEventListener('keydown', (e) => {
+                const keyMap = { '1': 21, '2': 30, '3': 60, '4': 90 };
+                if (keyMap[e.key]) generateData(keyMap[e.key]);
+            });
+        });
+    </script>
+</body>
+</html>

@@ -657,20 +657,28 @@ def analyze_data(technical_data, fundamental_data, investment_amount, industry_p
     )
 
     # 6) حساب أهداف السعر
+    pivot_pts = {
+        'R1': current_data.get('R1'),
+        'R2': current_data.get('R2'),
+        'S1': current_data.get('S1'),
+        'S2': current_data.get('S2'),
+    }
+
     up_targets, down_targets = calculate_price_targets(
-        current_price,
-        volatility,
-        current_data['BB_Upper'],
-        current_data['BB_Lower'],
-        resistance_level,
-        support_level,
-        fib_levels,
-        {'short_support': support_level,
-         'short_resistance': resistance_level,
-         'long_support': current_data['Long_Support'],
-         'long_resistance': current_data['Long_Resistance']},
-        sr_zones,
-        prediction
+        current_price=current_price,
+        volatility=volatility,
+        bb_upper=current_data['BB_Upper'],
+        bb_lower=current_data['BB_Lower'],
+        resistance=resistance_level,
+        support=support_level,
+        short_resistance=current_data.get('R1'),
+        long_resistance=current_data.get('Long_Resistance'),
+        short_support=current_data.get('S1'),
+        long_support=current_data.get('Long_Support'),
+        fib_levels=fib_levels,
+        pivot_levels=pivot_pts,
+        sr_zones=sr_zones,
+        trend_prediction=prediction,
     )
 
     # 7) حساب الأسهم والمبالغ
@@ -870,7 +878,7 @@ def analyze_data(technical_data, fundamental_data, investment_amount, industry_p
             'short_support': support_level,
             'short_resistance': resistance_level,
             'long_support': current_data['Long_Support'],
-            'long_resistance': current_data['Long_Resistance']
+            'long_resistance': current_data['Long_Resistance'],
         },
         'sr_zones': sr_zones,
         'financial_analysis': financial_analysis,

@@ -30,6 +30,14 @@ from create_price_chart import create_price_target_chart
 
 warnings.filterwarnings('ignore')
 
+# --------------------- HTML Template Utilities ---------------------
+def render_html_template(path: str, context: dict) -> str:
+    """Simple placeholder replacement for small HTML snippets."""
+    html = pathlib.Path(path).read_text(encoding="utf8")
+    for key, value in context.items():
+        html = html.replace(f"{{{{{key}}}}}", value)
+    return html
+
 # ==================== PAGE CONFIGURATION ====================
 st.set_page_config(
     page_title="📊 Comprehensive Stock Analysis Platform",
@@ -1747,14 +1755,15 @@ if 'analysis' in st.session_state and st.session_state['analysis'] is not None:
             unsafe_allow_html=True
         )
         macd_path = os.path.join(os.path.dirname(__file__), "macd_histogram.html")
-        html_raw  = pathlib.Path(macd_path).read_text(encoding="utf8")
-
         hist_df      = tech_df[['Date', 'MACD_Histogram']].tail(90)
         values_json  = json.dumps(hist_df['MACD_Histogram'].round(3).tolist())
         labels_json  = json.dumps(hist_df['Date'].dt.strftime('%d/%m').tolist())
 
-        html_raw = html_raw.replace('{{MACD_VALUES}}', values_json)
-        html_raw = html_raw.replace('{{MACD_LABELS}}', labels_json)
+        context = {
+            "MACD_VALUES": values_json,
+            "MACD_LABELS": labels_json,
+        }
+        html_raw = render_html_template(macd_path, context)
 
         # (تأكّد أنك كبّرت عنوان الـ HTML داخل الملف نفسه:
         #  font-size:28px أو options.plugins.title.font.size = 28)

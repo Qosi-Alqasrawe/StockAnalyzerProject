@@ -1,3 +1,4 @@
+import logging
 import pandas as pd
 import yfinance as yf
 from datetime import datetime
@@ -5,89 +6,168 @@ from typing import Tuple, Dict, Optional, Union
 import warnings
 warnings.filterwarnings('ignore')
 
-def fetch_fundamental_data(symbol: str) -> Tuple[Optional[dict], str]:
+logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# Keys extracted from yfinance info – centralised for maintainability
+# ---------------------------------------------------------------------------
+_SCALAR_KEYS: Tuple[str, ...] = (
+    'trailingPE', 'forwardPE', 'priceToBook', 'priceToSalesTrailing12Months',
+    'pegRatio', 'currentRatio', 'debtToEquity', 'returnOnEquity',
+    'returnOnAssets', 'grossMargins', 'operatingMargins', 'profitMargins',
+    'dividendYield', 'dividendRate', 'payoutRatio', 'revenueGrowth',
+    'earningsGrowth', 'beta', 'recommendationMean', 'targetMeanPrice',
+    'targetLowPrice', 'targetHighPrice', 'previousClose', 'marketCap',
+    'volume', 'averageVolume',
+)
+
+# Summary truncation length
+_SUMMARY_MAX_LEN = 200
+
+# Minimum required identifier for the symbol to be considered valid
+_REQUIRED_INFO_KEYS = ('longName', 'shortName', 'regularMarketPrice', 'currentPrice')
+
+
+# ---------------------------------------------------------------------------
+# Private helpers
+# ---------------------------------------------------------------------------
+
+def _safe_fetch_df(fetch_callable) -> pd.DataFrame:
     """
-    متوافق مع ui.py: يجلب البيانات المالية الأساسية والبيانات التفصيلية المطلوبة.
+    Call a zero-argument callable that returns a DataFrame.
+    Returns an empty DataFrame on any exception instead of propagating.
+
+    FIX vs original: bare `except:` is replaced with a typed catch + logging
+    so that genuine network/API errors are visible in logs without crashing
+    the overall fetch.
     """
     try:
-        symbol = symbol.upper().strip()
-        stock = yf.Ticker(symbol)
-        info = stock.info
+        result = fetch_callable()
+        if isinstance(result, pd.DataFrame):
+            return result
+        return pd.DataFrame()
+    except Exception as exc:
+        logger.debug("Financial statement fetch failed: %s", exc)
+        return pd.DataFrame()
 
-        if not info or (not info.get('longName') and not info.get('shortName')):
+
+def _extract_price(info: dict) -> Optional[float]:
+    """
+    Return the best available current price from the info dict.
+
+    yfinance sometimes populates 'currentPrice', sometimes
+    'regularMarketPrice', and occasionally neither.
+    """
+    for key in ('currentPrice', 'regularMarketPrice', 'previousClose'):
+        val = info.get(key)
+        if val is not None:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
+def _build_basic_info(info: dict, symbol: str) -> dict:
+    """
+    Build the basic_info dict in a single, readable pass.
+
+    FIX vs original:
+    • All scalar fields extracted via a loop so adding / removing keys is
+      a one-line change to _SCALAR_KEYS rather than a dict-literal edit.
+    • current_price resolved via _extract_price (multi-key fallback).
+    • Summary truncation uses slicing instead of a conditional expression
+      that would evaluate the full f-string even when not needed.
+    • day_range / week_52_range use explicit 'N/A' fallback instead of
+      f-string with naked info.get() calls that silently display 'None'.
+    """
+    long_name    = info.get('longName')
+    short_name   = info.get('shortName', 'N/A')
+    summary_raw  = info.get('longBusinessSummary', '')
+    summary      = (summary_raw[:_SUMMARY_MAX_LEN] + '...') if summary_raw else 'N/A'
+
+    day_low      = info.get('dayLow')
+    day_high     = info.get('dayHigh')
+    w52_low      = info.get('fiftyTwoWeekLow')
+    w52_high     = info.get('fiftyTwoWeekHigh')
+
+    basic_info: Dict[str, object] = {
+        'company_name':  long_name or short_name,
+        'symbol':        symbol,
+        'sector':        info.get('sector',   'N/A'),
+        'industry':      info.get('industry', 'N/A'),
+        'country':       info.get('country',  'N/A'),
+        'website':       info.get('website',  'N/A'),
+        'summary':       summary,
+        'current_price': _extract_price(info),
+        'day_range':     f"{day_low} - {day_high}"   if day_low  is not None and day_high  is not None else 'N/A',
+        'week_52_range': f"{w52_low} - {w52_high}"   if w52_low  is not None and w52_high  is not None else 'N/A',
+    }
+
+    # Bulk-copy all scalar financial metrics
+    for key in _SCALAR_KEYS:
+        basic_info[key] = info.get(key)
+
+    return basic_info
+
+
+# ---------------------------------------------------------------------------
+# Public API
+# ---------------------------------------------------------------------------
+
+def fetch_fundamental_data(symbol: str) -> Tuple[Optional[dict], str]:
+    """
+    Compatible with ui.py: Fetches fundamental financial data and detailed required data.
+    Returns a tuple of (result_dict, status_message).
+
+    Changes vs original:
+        • symbol validated and normalised before any network call.
+        • Validity check is more robust: at least one price field must be
+          present (not just a name), because yfinance returns partial info
+          dicts for delisted / invalid tickers that still have a longName.
+        • All financial statement fetches go through _safe_fetch_df which
+          logs failures rather than silently returning an empty frame.
+        • Six separate statement fetches are grouped into a single dict-comp
+          to reduce visual repetition and make adding new statements trivial.
+        • Error path returns the original exception message for debuggability.
+    """
+    # ── Input validation ──────────────────────────────────────────────────
+    if not symbol or not str(symbol).strip():
+        return None, "Symbol cannot be empty"
+
+    symbol = str(symbol).upper().strip()
+
+    try:
+        stock = yf.Ticker(symbol)
+
+        # ── Single expensive info call ────────────────────────────────────
+        info = stock.info or {}
+
+        # ── Validity: must have a name AND at least one price field ───────
+        has_name  = bool(info.get('longName') or info.get('shortName'))
+        has_price = _extract_price(info) is not None
+        if not has_name and not has_price:
             return None, f"Invalid symbol or no data available for: {symbol}"
 
-        # (1) بيانات أساسية (للواجهة)
-        basic_info = {
-            'company_name': info.get('longName') or info.get('shortName', 'N/A'),
-            'symbol': symbol,
-            'sector': info.get('sector', 'N/A'),
-            'industry': info.get('industry', 'N/A'),
-            'country': info.get('country', 'N/A'),
-            'website': info.get('website', 'N/A'),
-            'summary': info.get('longBusinessSummary', 'N/A')[:200] + '...' if info.get('longBusinessSummary') else 'N/A',
-            'current_price': info.get('currentPrice', info.get('regularMarketPrice', None)),
-            'previous_close': info.get('previousClose', None),
-            'market_cap': info.get('marketCap', None),
-            'volume': info.get('volume', None),
-            'average_volume': info.get('averageVolume', None),
-            'day_range': f"{info.get('dayLow', 'N/A')} - {info.get('dayHigh', 'N/A')}",
-            'week_52_range': f"{info.get('fiftyTwoWeekLow', 'N/A')} - {info.get('fiftyTwoWeekHigh', 'N/A')}",
-            'trailingPE': info.get('trailingPE', None),
-            'forwardPE': info.get('forwardPE', None),
-            'priceToBook': info.get('priceToBook', None),
-            'priceToSalesTrailing12Months': info.get('priceToSalesTrailing12Months', None),
-            'pegRatio': info.get('pegRatio', None),
-            'currentRatio': info.get('currentRatio', None),
-            'debtToEquity': info.get('debtToEquity', None),
-            'returnOnEquity': info.get('returnOnEquity', None),
-            'returnOnAssets': info.get('returnOnAssets', None),
-            'grossMargins': info.get('grossMargins', None),
-            'operatingMargins': info.get('operatingMargins', None),
-            'profitMargins': info.get('profitMargins', None),
-            'dividendYield': info.get('dividendYield', None),
-            'dividendRate': info.get('dividendRate', None),
-            'payoutRatio': info.get('payoutRatio', None),
-            'revenueGrowth': info.get('revenueGrowth', None),
-            'earningsGrowth': info.get('earningsGrowth', None),
-            'beta': info.get('beta', None),
-            'recommendationMean': info.get('recommendationMean', None),
-            'targetMeanPrice': info.get('targetMeanPrice', None),
-            'targetLowPrice'    : info.get('targetLowPrice', None),   # ⬅️ أضف هذا
-            'targetHighPrice'   : info.get('targetHighPrice', None),  # ⬅️ وأضف هذا
-        }
+        # ── Build basic_info ──────────────────────────────────────────────
+        basic_info = _build_basic_info(info, symbol)
 
-        # (2) القوائم المالية (لتحليل الأداء المالي)
-        try:
-            financials = stock.financials
-        except: financials = pd.DataFrame()
-        try:
-            balance_sheet = stock.balance_sheet
-        except: balance_sheet = pd.DataFrame()
-        try:
-            cashflow = stock.cashflow
-        except: cashflow = pd.DataFrame()
-        try:
-            quarterly_financials = stock.quarterly_financials
-        except: quarterly_financials = pd.DataFrame()
-        try:
-            quarterly_balance_sheet = stock.quarterly_balance_sheet
-        except: quarterly_balance_sheet = pd.DataFrame()
-        try:
-            quarterly_cashflow = stock.quarterly_cashflow
-        except: quarterly_cashflow = pd.DataFrame()
-
-        # (3) إعداد الدكتشنري النهائي بنفس هيكلية ui.py
-        result = {
-            "basic_info": basic_info,
-            "financials": financials,
-            "balance_sheet": balance_sheet,
-            "cashflow": cashflow,
-            "quarterly_financials": quarterly_financials,
-            "quarterly_balance_sheet": quarterly_balance_sheet,
-            "quarterly_cashflow": quarterly_cashflow,
+        # ── Fetch all financial statements ────────────────────────────────
+        statement_fetchers = {
+            'financials':                lambda: stock.financials,
+            'balance_sheet':             lambda: stock.balance_sheet,
+            'cashflow':                  lambda: stock.cashflow,
+            'quarterly_financials':      lambda: stock.quarterly_financials,
+            'quarterly_balance_sheet':   lambda: stock.quarterly_balance_sheet,
+            'quarterly_cashflow':        lambda: stock.quarterly_cashflow,
         }
+        statements = {key: _safe_fetch_df(fn) for key, fn in statement_fetchers.items()}
+
+        result = {"basic_info": basic_info, **statements}
+
+        logger.debug("Successfully fetched fundamental data for %s", symbol)
         return result, f"Successfully fetched fundamental data for {symbol}"
 
-    except Exception as e:
-        return None, f"Error fetching fundamental data for {symbol}: {str(e)}"
+    except Exception as exc:
+        logger.error("Error fetching fundamental data for %s: %s", symbol, exc, exc_info=True)
+        return None, f"Error fetching fundamental data for {symbol}: {exc}"

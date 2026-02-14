@@ -198,22 +198,137 @@
     <script>
         let chart;
 
-        // >>> Streamlit رح يحقن القيم هون <<< 
-        	const macdData   = {{MACD_VALUES}};
+        // Streamlit will inject values here
+        const macdData = {{MACD_VALUES}};
         const macdLabels = {{MACD_LABELS}};
 
+        // Pre-defined color constants for better performance
+        const COLORS = {
+            positive: {
+                bg: 'rgba(95, 228, 153, 0.8)',
+                border: '#5fe499'
+            },
+            negative: {
+                bg: 'rgba(243, 77, 99, 0.8)',
+                border: '#f34d63'
+            }
+        };
+
+        // Common chart options (defined once, reused)
+        const BASE_CHART_OPTIONS = {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    backgroundColor: 'rgba(26, 26, 26, 0.95)',
+                    titleColor: '#ffffff',
+                    bodyColor: '#ffffff',
+                    borderColor: 'rgba(255, 255, 255, 0.2)',
+                    borderWidth: 1,
+                    cornerRadius: 8
+                }
+            },
+            scales: {
+                x: {
+                    grid: {
+                        display: true,
+                        color: 'rgba(255, 255, 255, 0.1)',
+                        lineWidth: 0.5
+                    },
+                    ticks: {
+                        color: '#ffffff',
+                        font: { size: 10 },
+                        maxRotation: 45,
+                        minRotation: 0
+                    },
+                    border: { color: 'rgba(255, 255, 255, 0.2)' }
+                },
+                y: {
+                    grid: {
+                        display: true,
+                        color: 'rgba(255, 255, 255, 0.1)',
+                        lineWidth: 0.5
+                    },
+                    ticks: {
+                        color: '#ffffff',
+                        font: { size: 10 },
+                        callback: (value) => value.toFixed(1)
+                    },
+                    border: { color: 'rgba(255, 255, 255, 0.2)' },
+                    beginAtZero: true
+                }
+            },
+            layout: { padding: 10 },
+            animation: {
+                duration: 1200,
+                easing: 'easeOutQuart'
+            }
+        };
+
+        // Register zero line plugin once
+        Chart.register({
+            id: 'zeroLine',
+            afterDraw: (chart) => {
+                const { ctx, chartArea, scales: { y } } = chart;
+                const zeroY = y.getPixelForValue(0);
+
+                ctx.save();
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.moveTo(chartArea.left, zeroY);
+                ctx.lineTo(chartArea.right, zeroY);
+                ctx.stroke();
+                ctx.restore();
+            }
+        });
 
         const createChart = (days = 21) => {
-            const data   = macdData.slice(-days);
+            // Slice data once
+            const data = macdData.slice(-days);
             const labels = macdLabels.slice(-days);
+            
+            // Calculate label interval
             const labelInterval = days <= 30 ? 3 : Math.ceil(days / 10);
+            
+            // Pre-compute colors for all bars (single pass)
+            const backgroundColors = new Array(data.length);
+            const borderColors = new Array(data.length);
+            
+            for (let i = 0; i < data.length; i++) {
+                const isPositive = data[i] > 0;
+                backgroundColors[i] = isPositive ? COLORS.positive.bg : COLORS.negative.bg;
+                borderColors[i] = isPositive ? COLORS.positive.border : COLORS.negative.border;
+            }
+            
+            // Generate display labels (single pass)
             const displayLabels = labels.map((label, index) => 
                 index % labelInterval === 0 ? label : ''
             );
+            
+            // Calculate bar thickness once
+            const maxBarThickness = Math.max(8, Math.min(20, 300 / days));
 
-            if (chart) chart.destroy();
+            // Destroy existing chart if present
+            if (chart) {
+                chart.destroy();
+            }
 
+            // Create chart configuration
             const ctx = document.getElementById('macdChart').getContext('2d');
+            
+            // Clone base options and add dynamic tooltip callbacks
+            const chartOptions = JSON.parse(JSON.stringify(BASE_CHART_OPTIONS));
+            chartOptions.plugins.tooltip.callbacks = {
+                title: (context) => labels[context[0].dataIndex],
+                label: (context) => {
+                    const value = context.raw;
+                    const trend = value > 0 ? '📈 Bullish' : '📉 Bearish';
+                    return [`MACD: ${value}`, trend];
+                }
+            };
+
             chart = new Chart(ctx, {
                 type: 'bar',
                 data: {
@@ -221,112 +336,45 @@
                     datasets: [{
                         label: 'MACD Histogram',
                         data: data,
-                        backgroundColor: data.map(value =>
-                            value > 0 ? 'rgba(95, 228, 153, 0.8)' : 'rgba(243, 77, 99, 0.8)'
-                        ),
-                        borderColor: data.map(value =>
-                            value > 0 ? '#5fe499' : '#f34d63'
-                        ),
+                        backgroundColor: backgroundColors,
+                        borderColor: borderColors,
                         borderWidth: 1,
                         borderRadius: 2,
                         barThickness: 'flex',
-                        maxBarThickness: Math.max(8, Math.min(20, 300 / days))
+                        maxBarThickness: maxBarThickness
                     }]
                 },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    plugins: {
-                        legend: { display: false },
-                        tooltip: {
-                            backgroundColor: 'rgba(26, 26, 26, 0.95)',
-                            titleColor: '#ffffff',
-                            bodyColor: '#ffffff',
-                            borderColor: 'rgba(255, 255, 255, 0.2)',
-                            borderWidth: 1,
-                            cornerRadius: 8,
-                            callbacks: {
-                                title: (context) => labels[context[0].dataIndex],
-                                label: (context) => {
-                                    const value = context.raw;
-                                    const trend = value > 0 ? '📈 Bullish' : '📉 Bearish';
-                                    return [`MACD: ${value}`, trend];
-                                }
-                            }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: {
-                                display: true,
-                                color: 'rgba(255, 255, 255, 0.1)',
-                                lineWidth: 0.5
-                            },
-                            ticks: {
-                                color: '#ffffff',
-                                font: { size: 10 },
-                                maxRotation: 45,
-                                minRotation: 0
-                            },
-                            border: { color: 'rgba(255, 255, 255, 0.2)' }
-                        },
-                        y: {
-                            grid: {
-                                display: true,
-                                color: 'rgba(255, 255, 255, 0.1)',
-                                lineWidth: 0.5
-                            },
-                            ticks: {
-                                color: '#ffffff',
-                                font: { size: 10 },
-                                callback: (value) => value.toFixed(1)
-                            },
-                            border: { color: 'rgba(255, 255, 255, 0.2)' },
-                            beginAtZero: true
-                        }
-                    },
-                    layout: { padding: 10 },
-                    animation: {
-                        duration: 1200,
-                        easing: 'easeOutQuart'
-                    }
-                }
-            });
-
-            // Zero line plugin
-            Chart.register({
-                id: 'zeroLine',
-                afterDraw: (chart) => {
-                    const { ctx, chartArea, scales: { y } } = chart;
-                    const zeroY = y.getPixelForValue(0);
-
-                    ctx.save();
-                    ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
-                    ctx.lineWidth = 2;
-                    ctx.beginPath();
-                    ctx.moveTo(chartArea.left, zeroY);
-                    ctx.lineTo(chartArea.right, zeroY);
-                    ctx.stroke();
-                    ctx.restore();
-                }
+                options: chartOptions
             });
         };
 
         const generateData = (days) => {
-            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
-            const btn = document.getElementById(`btn${days}`);
-            if (btn) btn.classList.add('active');
+            // Update active button state efficiently
+            const buttons = document.querySelectorAll('.controls button');
+            buttons.forEach(btn => btn.classList.remove('active'));
+            
+            const activeBtn = document.getElementById(`btn${days}`);
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            }
+            
+            // Create chart with selected period
             createChart(days);
         };
 
-        // Initialize
+        // Initialize on DOM ready
         document.addEventListener('DOMContentLoaded', () => {
+            // Create initial chart
             generateData(21);
 
-            // Keyboard shortcuts
+            // Setup keyboard shortcuts
+            const keyMap = { '1': 21, '2': 30, '3': 60, '4': 90 };
+            
             document.addEventListener('keydown', (e) => {
-                const keyMap = { '1': 21, '2': 30, '3': 60, '4': 90 };
-                if (keyMap[e.key]) generateData(keyMap[e.key]);
+                const days = keyMap[e.key];
+                if (days) {
+                    generateData(days);
+                }
             });
         });
     </script>
